@@ -194,6 +194,17 @@ main { flex: 1; padding: 16px 16px 96px; }
 .shot-grid .s img { width: 100%; height: 100%; object-fit: cover; }
 .shot-grid .s.done { border: 0; }
 
+/* 写真の拡大表示（アプリとして使うとき、別ページに移ると戻れないため重ねて表示する） */
+.compare button.ph { border: 0; padding: 0; width: 100%; cursor: zoom-in; }
+.lightbox { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.92); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; padding: calc(16px + env(safe-area-inset-top)) 16px 24px; }
+.lightbox[hidden] { display: none; }
+.lightbox img { max-width: 100%; max-height: 78vh; object-fit: contain; border-radius: 8px; }
+.lightbox p { color: #fff; font-size: .85rem; text-align: center; margin: 12px 0 0; line-height: 1.5; }
+.lightbox p small { display: block; opacity: .7; font-size: .7rem; }
+.lb-close { position: absolute; top: calc(12px + env(safe-area-inset-top)); right: 12px; width: 44px; height: 44px;
+            border-radius: 50%; border: 0; background: rgba(255,255,255,.18); color: #fff; font-size: 1.3rem; }
+
 /* AI の準備（初回ダウンロード） */
 .prep { border: 2px solid var(--brand); }
 .prep h2 { margin: 0 0 6px; font-size: 1.05rem; }
@@ -316,6 +327,11 @@ main { flex: 1; padding: 16px 16px 96px; }
   <button class="tab" data-tab="history">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>履歴</button>
 </div></nav>
+<div class="lightbox" id="lightbox" hidden>
+  <button class="lb-close" id="lbClose" aria-label="閉じる">✕</button>
+  <img id="lbImg" alt="">
+  <p id="lbCap"></p>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -347,6 +363,9 @@ function toast(msg) {
 
 // ---------- 画面切り替え ----------
 function show(id) {
+  const NAV = ["result", "crop", "shots"];
+  if (NAV.includes(id) && !NAV.includes(history.state?.screen)) history.pushState({ screen: id }, "");
+  else if (NAV.includes(id)) history.replaceState({ screen: id }, "");
   document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on",
     t.dataset.tab === (id === "history" ? "history" : "home")));
@@ -358,9 +377,29 @@ document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () =>
   if (t.dataset.tab === "history") renderHistory();
   show(t.dataset.tab);
 }));
-$("#backBtn").addEventListener("click", () => {
+function goBack() {
   if (lastScreen === "history") renderHistory();
   show(lastScreen === "loading" ? "home" : lastScreen);
+}
+$("#backBtn").addEventListener("click", () => history.state?.screen === "result" ? history.back() : goBack());
+
+// 拡大表示。履歴に1つ積んでおき、戻る操作（Android の戻るボタンなど）でも閉じられるようにする
+function openLightbox(src, caption, credit, fallback) {
+  const img = $("#lbImg");
+  img.onerror = fallback ? () => { img.onerror = null; img.src = fallback; } : null;
+  img.src = src; img.alt = caption;
+  $("#lbCap").replaceChildren(caption, credit ? el("small", { text: credit }) : "");
+  $("#lightbox").hidden = false;
+  history.pushState({ lightbox: true }, "");
+}
+function closeLightbox() { $("#lightbox").hidden = true; $("#lbImg").src = ""; }
+$("#lbClose").addEventListener("click", () => history.back());
+$("#lightbox").addEventListener("click", e => { if (e.target.id === "lightbox") history.back(); });
+window.addEventListener("popstate", () => {
+  if (!$("#lightbox").hidden) { closeLightbox(); return; }
+  const active = document.querySelector(".screen.active")?.id;
+  if (active === "result") goBack();
+  else if (active === "crop" || active === "shots") { shots = []; queue = []; show("home"); }
 });
 
 // ---------- 水族館の選択 ----------
@@ -770,13 +809,15 @@ function renderResult(item) {
     detail.replaceChildren(
       el("div", { class: "section-title", style: "margin-top:0", text: i === 0 ? "見比べてみよう" : `候補 ${i + 1} と見比べる` }),
       el("div", { class: "compare" },
-        el("figure", {}, el("div", { class: "ph" }, el("img", { src: item.thumb, alt: "あなたの写真" })),
+        el("figure", {}, el("button", { class: "ph", onclick: () => openLightbox(item.thumb, "あなたの写真") },
+            el("img", { src: item.thumb, alt: "あなたの写真" })),
           el("figcaption", { text: "あなたの写真" })),
-        el("figure", {}, el("a", { class: "ph", href: s.photo_large || null, target: "_blank", rel: "noopener" },
+        el("figure", {}, el("button", { class: "ph", disabled: !s.photo,
+              onclick: () => openLightbox(s.photo_large || s.photo, displayName(s) + " の写真", s.credit, s.photo) },
             s.photo ? el("img", { src: s.photo, alt: displayName(s), loading: "lazy" }) : "写真なし"),
           el("figcaption", { text: displayName(s) + " の写真" },
             s.credit ? el("span", { class: "credit", text: s.credit }) : null))),
-      el("p", { class: "compare-note", text: "右の写真をタップすると大きく表示します" }),
+      el("p", { class: "compare-note", text: "写真をタップすると大きく表示します" }),
       i > 0 ? [el("div", { class: "cand-name", text: displayName(s) }), tagRow(s), triviaBox(s)] : null,
       el("details", { class: "more" },
         el("summary", { text: "くわしい情報（学名・科）" }),

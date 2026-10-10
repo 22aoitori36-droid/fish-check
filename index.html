@@ -172,6 +172,28 @@ main { flex: 1; padding: 16px 16px 96px; }
 .tab svg { display: block; width: 24px; height: 24px; margin: 0 auto 2px; }
 .tab.on { color: var(--brand); }
 
+.count-hint { font-size: .78rem; color: var(--muted); margin: -6px 4px 14px; }
+
+/* 魚の部分を囲む */
+.crop-title { font-weight: 900; font-size: 1.1rem; text-align: center; }
+.crop-sub { font-size: .8rem; color: var(--muted); text-align: center; margin: 4px 0 12px; }
+.crop-stage { position: relative; margin: 0 auto 14px; width: fit-content; max-width: 100%; overflow: hidden;
+              border-radius: 12px; touch-action: none; user-select: none; -webkit-user-select: none; background: #000; }
+.crop-stage img { display: block; max-width: 100%; max-height: 58vh; pointer-events: none; }
+.crop-box { position: absolute; border: 2px solid #fff; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); cursor: move; }
+.crop-box .h { position: absolute; width: 28px; height: 28px; }
+.crop-box .h::after { content: ""; position: absolute; width: 14px; height: 14px; background: #fff; border-radius: 50%;
+                      left: 7px; top: 7px; box-shadow: 0 0 0 2px var(--brand); }
+.crop-box .nw { left: -15px; top: -15px; cursor: nwse-resize; }
+.crop-box .ne { right: -15px; top: -15px; cursor: nesw-resize; }
+.crop-box .sw { left: -15px; bottom: -15px; cursor: nesw-resize; }
+.crop-box .se { right: -15px; bottom: -15px; cursor: nwse-resize; }
+.shot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.shot-grid .s { aspect-ratio: 1; border-radius: 12px; overflow: hidden; background: var(--surface-2);
+                display: grid; place-items: center; color: var(--muted); font-size: .8rem; border: 2px dashed var(--line); }
+.shot-grid .s img { width: 100%; height: 100%; object-fit: cover; }
+.shot-grid .s.done { border: 0; }
+
 /* AI の準備（初回ダウンロード） */
 .prep { border: 2px solid var(--brand); }
 .prep h2 { margin: 0 0 6px; font-size: 1.05rem; }
@@ -201,6 +223,9 @@ main { flex: 1; padding: 16px 16px 96px; }
     <section class="screen active" id="home">
       <div class="section-title">どこの水族館？</div>
       <div class="chips" id="chips"></div>
+      <div class="section-title">何枚で判定する？</div>
+      <div class="chips" id="countChips"></div>
+      <p class="count-hint">同じ魚を角度を変えて2〜3枚撮ると、精度が上がります（1枚あたり数秒〜10秒）</p>
 
       <div class="card prep" id="prep" hidden></div>
 
@@ -240,10 +265,41 @@ main { flex: 1; padding: 16px 16px 96px; }
       </div>
     </section>
 
+    <!-- 魚の部分を囲む -->
+    <section class="screen" id="crop">
+      <div class="card crop-card">
+        <div class="crop-title" id="cropTitle"></div>
+        <p class="crop-sub">枠の中をドラッグで移動、角をドラッグで大きさを変えられます</p>
+        <div class="crop-stage" id="cropStage">
+          <img id="cropImg" alt="囲む写真" draggable="false">
+          <div class="crop-box" id="cropBox">
+            <span class="h nw" data-h="nw"></span><span class="h ne" data-h="ne"></span>
+            <span class="h sw" data-h="sw"></span><span class="h se" data-h="se"></span>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="cropOk">この範囲で決定</button>
+        <button class="btn btn-secondary" id="cropAll">写真全体を使う</button>
+        <button class="linkish" id="cropCancel">やめる</button>
+      </div>
+    </section>
+
+    <!-- 集めた写真 -->
+    <section class="screen" id="shots">
+      <div class="card">
+        <div class="crop-title" id="shotsTitle"></div>
+        <p class="crop-sub" id="shotsSub"></p>
+        <div class="shot-grid" id="shotGrid"></div>
+        <button class="btn btn-primary" id="nextCamera">次の写真を撮る</button>
+        <button class="btn btn-secondary" id="nextAlbum">アルバムから選ぶ</button>
+        <button class="btn btn-secondary" id="shotsGo">この枚数で判定する</button>
+        <button class="linkish" id="shotsCancel">最初からやり直す</button>
+      </div>
+    </section>
+
     <!-- 判定中 -->
     <section class="screen" id="loading">
       <div class="scan"><img id="loadingImg" alt="判定中の写真"></div>
-      <p class="loading-text">AI が判定しています…<small>スマホの中で計算しています（10秒ほど）</small></p>
+      <p class="loading-text">AI が判定しています…<small id="loadingSub">スマホの中で計算しています（10秒ほど）</small></p>
     </section>
 
     <!-- 結果 -->
@@ -325,35 +381,146 @@ function renderChips() {
   })));
 }
 
-// ---------- 写真の入力 ----------
-$("#cameraBtn").addEventListener("click", () => $("#cameraInput").click());
-$("#albumBtn").addEventListener("click", () => $("#albumInput").click());
+// ---------- 判定に使う枚数 ----------
+const COUNT_KEY = "fishid.count";
+let shotCount = Math.min(3, Math.max(1, store.get(COUNT_KEY, 1)));
+function renderCountChips() {
+  $("#countChips").replaceChildren(...[1, 2, 3].map(n => el("button", {
+    class: "chip" + (n === shotCount ? " on" : ""), text: `${n}枚`,
+    onclick: () => { shotCount = n; store.set(COUNT_KEY, n); renderCountChips(); },
+  })));
+}
+renderCountChips();
+
+// ---------- 写真の入力 → 囲む → 集める ----------
+let shots = [];   // { canvas: 魚の部分, thumb: dataURL }
+let queue = [];   // 囲む前の写真ファイル
+function pickCamera() { $("#cameraInput").click(); }
+function pickAlbum() {
+  $("#albumInput").multiple = shotCount - shots.length > 1;
+  $("#albumInput").click();
+}
+$("#cameraBtn").addEventListener("click", () => { shots = []; pickCamera(); });
+$("#albumBtn").addEventListener("click", () => { shots = []; pickAlbum(); });
+$("#nextCamera").addEventListener("click", pickCamera);
+$("#nextAlbum").addEventListener("click", pickAlbum);
 for (const id of ["#cameraInput", "#albumInput"]) {
-  $(id).addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f) identify(f); });
+  $(id).addEventListener("change", e => { const fs = [...e.target.files]; e.target.value = ""; addFiles(fs); });
 }
 const drop = $("#drop");
 ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("drag"); }));
 ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("drag"); }));
-drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) identify(f); });
+drop.addEventListener("drop", e => { shots = []; addFiles([...e.dataTransfer.files]); });
 document.addEventListener("paste", e => {
   const f = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith("image/"));
-  if (f && $("#home").classList.contains("active")) identify(f);
+  if (f && $("#home").classList.contains("active")) { shots = []; addFiles([f]); }
 });
 
-// 送る前に縮小（速く・軽く）
-async function shrink(file, max, quality) {
-  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
-  const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
-  const c = el("canvas", { width: Math.round(bmp.width * s), height: Math.round(bmp.height * s) });
-  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-  return new Promise(r => c.toBlob(r, "image/jpeg", quality));
+function addFiles(files) {
+  if (!engineReady) { toast("AI の準備ができてから写真を選んでください"); return; }
+  queue = files.filter(f => f.type.startsWith("image/") || !f.type).slice(0, shotCount - shots.length);
+  nextInQueue();
 }
-const toDataURL = (blob) => new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(blob); });
+async function nextInQueue() {
+  if (!queue.length) {
+    if (shots.length >= shotCount) runIdentify(); else showShots();
+    return;
+  }
+  const file = queue.shift();
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    // 囲む画面用に長辺 1600px までに縮小しておく
+    const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const c = el("canvas", { width: Math.round(bmp.width * s), height: Math.round(bmp.height * s) });
+    const g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(bmp, 0, 0, c.width, c.height);
+    openCrop(c);
+  } catch {
+    toast("この写真は読み込めませんでした。別の写真で試してください");
+    nextInQueue();
+  }
+}
+
+// 囲む画面
+let cropSrc = null, box = null;
+const MIN_BOX = 40;
+function openCrop(canvas) {
+  cropSrc = canvas;
+  $("#cropTitle").textContent = shotCount > 1 ? `魚の部分を囲んでください（${shots.length + 1} / ${shotCount}枚目）` : "魚の部分を囲んでください";
+  const img = $("#cropImg");
+  img.onload = () => {
+    const W = img.clientWidth, H = img.clientHeight;
+    box = { x: W * .08, y: H * .08, w: W * .84, h: H * .84 };
+    drawBox();
+  };
+  img.src = canvas.toDataURL("image/jpeg", .9);
+  show("crop");
+}
+function drawBox() {
+  Object.assign($("#cropBox").style, { left: box.x + "px", top: box.y + "px", width: box.w + "px", height: box.h + "px" });
+}
+(() => {
+  let drag = null;
+  $("#cropBox").addEventListener("pointerdown", e => {
+    e.preventDefault();
+    drag = { mode: e.target.dataset.h || "move", sx: e.clientX, sy: e.clientY, b: { ...box } };
+    $("#cropBox").setPointerCapture(e.pointerId);
+  });
+  $("#cropBox").addEventListener("pointermove", e => {
+    if (!drag) return;
+    const img = $("#cropImg"), W = img.clientWidth, H = img.clientHeight;
+    const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy, b = drag.b;
+    let { x, y, w, h } = b;
+    if (drag.mode === "move") {
+      x = Math.min(Math.max(0, b.x + dx), W - b.w); y = Math.min(Math.max(0, b.y + dy), H - b.h);
+    } else {
+      let x2 = b.x + b.w, y2 = b.y + b.h;
+      if (drag.mode.includes("w")) x = Math.min(Math.max(0, b.x + dx), x2 - MIN_BOX);
+      if (drag.mode.includes("e")) x2 = Math.max(Math.min(W, x2 + dx), b.x + MIN_BOX);
+      if (drag.mode.includes("n")) y = Math.min(Math.max(0, b.y + dy), y2 - MIN_BOX);
+      if (drag.mode.includes("s")) y2 = Math.max(Math.min(H, y2 + dy), b.y + MIN_BOX);
+      w = x2 - x; h = y2 - y;
+    }
+    box = { x, y, w, h }; drawBox();
+  });
+  const end = () => { drag = null; };
+  $("#cropBox").addEventListener("pointerup", end);
+  $("#cropBox").addEventListener("pointercancel", end);
+})();
+function finishCrop(useBox) {
+  const img = $("#cropImg"), k = cropSrc.width / img.clientWidth;
+  const r = useBox ? { x: box.x * k, y: box.y * k, w: box.w * k, h: box.h * k }
+                   : { x: 0, y: 0, w: cropSrc.width, h: cropSrc.height };
+  const c = el("canvas", { width: Math.max(1, Math.round(r.w)), height: Math.max(1, Math.round(r.h)) });
+  const g = c.getContext("2d"); g.imageSmoothingQuality = "high";
+  g.drawImage(cropSrc, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
+  const t = Math.min(1, 400 / Math.max(c.width, c.height));
+  const tc = el("canvas", { width: Math.round(c.width * t), height: Math.round(c.height * t) });
+  tc.getContext("2d").drawImage(c, 0, 0, tc.width, tc.height);
+  shots.push({ canvas: c, thumb: tc.toDataURL("image/jpeg", .75) });
+  nextInQueue();
+}
+$("#cropOk").addEventListener("click", () => finishCrop(true));
+$("#cropAll").addEventListener("click", () => finishCrop(false));
+$("#cropCancel").addEventListener("click", () => { queue = []; shots.length ? showShots() : show("home"); });
+
+// 集めた写真の画面
+function showShots() {
+  const left = shotCount - shots.length;
+  $("#shotsTitle").textContent = `${shots.length} / ${shotCount}枚`;
+  $("#shotsSub").textContent = `あと${left}枚。同じ魚を、角度や位置を変えて撮ってください`;
+  $("#shotGrid").replaceChildren(...Array.from({ length: shotCount }, (_, i) => shots[i]
+    ? el("div", { class: "s done" }, el("img", { src: shots[i].thumb, alt: `${i + 1}枚目` }))
+    : el("div", { class: "s", text: `${i + 1}枚目` })));
+  $("#shotsGo").textContent = `この${shots.length}枚で判定する`;
+  show("shots");
+}
+$("#shotsGo").addEventListener("click", runIdentify);
+$("#shotsCancel").addEventListener("click", () => { shots = []; queue = []; show("home"); });
 
 // モデル入力: 224x224 に縮小（縦横比は無視）→ CLIP の平均・標準偏差で正規化した CHW 配列
-async function toPixels(file) {
+async function toPixels(source) {
   const size = META.size;
-  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const bmp = source instanceof HTMLCanvasElement ? source : await createImageBitmap(source, { imageOrientation: "from-image" });
   // 一気に縮めるとギザギザになるので、2段階で縮小する
   let src = bmp;
   if (Math.max(bmp.width, bmp.height) > size * 4) {
@@ -371,23 +538,20 @@ async function toPixels(file) {
   return out;
 }
 
-async function identify(file) {
-  if (!engineReady) { toast("AI の準備ができてから写真を選んでください"); return; }
-  let pixels, thumb, preview;
-  try {
-    pixels = await toPixels(file);
-    const small = await shrink(file, 400, .75);
-    thumb = await toDataURL(small);
-    preview = URL.createObjectURL(await shrink(file, 1024, .85));
-  } catch {
-    toast("この写真は読み込めませんでした。別の写真で試してください"); return;
-  }
-  $("#loadingImg").src = preview;
+async function runIdentify() {
+  if (!shots.length) return;
+  const used = shots;
+  shots = []; queue = [];
+  const pixels = await Promise.all(used.map(s => toPixels(s.canvas)));
+  $("#loadingImg").src = used[0].thumb;
+  $("#loadingSub").textContent = used.length > 1
+    ? `${used.length}枚の写真をまとめて計算しています（${used.length * 8}秒ほど）`
+    : "スマホの中で計算しています（10秒ほど）";
   show("loading");
   try {
-    const r = await engineCall({ type: "identify", pixels, list: currentAq, k: 5 }, [pixels.buffer]);
+    const r = await engineCall({ type: "identify", pixels, list: currentAq, k: 5 }, pixels.map(p => p.buffer));
     const data = await buildResult(r);
-    const item = { id: Date.now(), aq: currentAq, thumb, result: data };
+    const item = { id: Date.now(), aq: currentAq, thumb: used[0].thumb, shots: used.length, result: data };
     saveHistory(item);
     renderResult(item);
     lastScreen = "home";

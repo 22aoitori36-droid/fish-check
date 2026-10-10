@@ -90,10 +90,24 @@ function dots(q, scale, v) {
   return out;
 }
 
-async function identify(pixels, listName, k) {
+// 複数枚の写真は、それぞれの特徴ベクトルを平均してから正規化する
+async function embedAll(pixelsList) {
+  const m = meta, v = new Float32Array(m.dim);
+  for (const pixels of pixelsList) {
+    const input = new ort.Tensor("float32", pixels, [1, 3, m.size, m.size]);
+    const e = (await session.run({ pixels: input })).emb.data;
+    for (let k = 0; k < m.dim; k++) v[k] += e[k];
+  }
+  let norm = 0;
+  for (let k = 0; k < m.dim; k++) norm += v[k] * v[k];
+  norm = Math.sqrt(norm) || 1;
+  for (let k = 0; k < m.dim; k++) v[k] /= norm;
+  return v;
+}
+
+async function identify(pixelsList, listName, k) {
   const m = meta, t0 = performance.now();
-  const input = new ort.Tensor("float32", pixels, [1, 3, m.size, m.size]);
-  const v = (await session.run({ pixels: input })).emb.data;
+  const v = await embedAll(Array.isArray(pixelsList) ? pixelsList : [pixelsList]);
   const tInfer = performance.now() - t0;
   const fs = dots(fishQ, fishScale, v), ns = dots(negQ, negScale, v), L = m.logit_scale;
 

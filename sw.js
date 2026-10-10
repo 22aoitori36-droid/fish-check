@@ -16,13 +16,14 @@ self.addEventListener("fetch", (e) => {
   const sameOrigin = url.origin === self.location.origin;
   const big = /\/model\/|\/photos\/|\.i8$|\.scale$/.test(url.pathname);
   if (sameOrigin && big) {
-    // engine-worker.js が保存したもの（モデル・埋め込み・同梱写真）を優先
-    e.respondWith(caches.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req)));
+    // engine-worker.js が保存したもの（モデル・埋め込み・同梱写真）を優先。
+    // ?v=（版）付きは同じ版だけを返す
+    e.respondWith(caches.match(req, { ignoreSearch: !url.search }).then(hit => hit || fetch(req)));
     return;
   }
   if (sameOrigin && !big) {
-    // ネット優先
-    e.respondWith(fetch(req).then(res => {
+    // ネット優先（ブラウザの HTTP キャッシュも確かめ直して、更新をすぐ反映する）
+    e.respondWith(fetch(req.mode === "navigate" ? req : new Request(req, { cache: "no-cache" })).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(SHELL).then(c => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true })));

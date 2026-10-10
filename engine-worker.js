@@ -23,11 +23,24 @@ async function bigCache() {
   return caches.open(BIG_CACHE);
 }
 
+// キャッシュにない（または壊れている）ファイル。モデルと写真以外は大きさも確かめる
+// （以前の sw.js が別の版の中身を返して保存してしまったことがあるため）
+async function missingPaths(m, cache, paths) {
+  const ok = await Promise.all(paths.map(async p => {
+    const hit = await cache.match(versioned(m, p));
+    if (!hit) return false;
+    if (p.startsWith("photos/") || p.startsWith("model/")) return true;
+    if ((await hit.arrayBuffer()).byteLength === m.files[p].n) return true;
+    await cache.delete(versioned(m, p));
+    return false;
+  }));
+  return paths.filter((_, i) => !ok[i]);
+}
+
 async function status() {
   const m = await getMeta(), cache = await bigCache();
   const paths = bigPaths(m);
-  const hits = await Promise.all(paths.map(p => cache.match(versioned(m, p))));
-  const missing = paths.filter((_, i) => !hits[i]);
+  const missing = await missingPaths(m, cache, paths);
   const missingBytes = missing.reduce((a, p) => a + m.files[p].n, 0);
   return { cached: !missing.length, total: missingBytes, update: missing.length < paths.length };
 }
@@ -36,14 +49,17 @@ async function status() {
 async function fetchAll(m, allowDownload) {
   const cache = await bigCache();
   const paths = bigPaths(m), urls = paths.map(p => versioned(m, p));
+  const missing = await missingPaths(m, cache, paths);
   const cached = await Promise.all(urls.map(u => cache.match(u)));
-  const missing = paths.filter((_, i) => !cached[i]);
   if (missing.length && !allowDownload) throw new Error("not-cached");
   const total = missing.reduce((a, p) => a + m.files[p].n, 0);
   let loaded = 0, lastPost = 0;
   const out = {};
   async function download(p) {
     const u = versioned(m, p);
+    // 同じファイルの古い版を先に消す（古い sw.js が版を区別せずに古い中身を返さないように）
+    for (const req of await cache.keys())
+      if (new URL(req.url).pathname === new URL(u, self.location.href).pathname) await cache.delete(req);
     const r = await fetch(u, { cache: "no-store" });
     if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`);
     const reader = r.body.getReader(), chunks = [];

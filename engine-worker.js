@@ -5,7 +5,7 @@ ort.env.wasm.wasmPaths = ORT_URL;
 ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
 
 const BIG_CACHE = "fishid-big";
-let meta, session, fishQ, fishScale, negQ, negScale, protoQ, protoScale, lists;
+let meta, session, fishQ, fishScale, negQ, negScale, protoList, protoAll, lists;
 
 const post = (msg, transfer) => self.postMessage(msg, transfer || []);
 
@@ -81,9 +81,9 @@ async function load(allowDownload) {
   session = await ort.InferenceSession.create(model, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
   fishQ = new Int8Array(files["data/fish.i8"]); fishScale = new Float32Array(files["data/fish.scale"]);
   negQ = new Int8Array(files["data/neg.i8"]); negScale = new Float32Array(files["data/neg.scale"]);
-  if (files["data/proto.i8"]) {
-    protoQ = new Int8Array(files["data/proto.i8"]); protoScale = new Float32Array(files["data/proto.scale"]);
-  }
+  const table = (n) => files[`data/${n}.i8`] &&
+    { q: new Int8Array(files[`data/${n}.i8`]), scale: new Float32Array(files[`data/${n}.scale`]) };
+  protoList = table("proto_list"); protoAll = table("proto_all");
   lists = await (await fetch("data/lists.json")).json();
   post({ type: "ready", ms: Math.round(performance.now() - t0), threads: ort.env.wasm.numThreads });
 }
@@ -132,12 +132,14 @@ async function identify(pixelsList, listName, k) {
   // 候補（水族館リスト or 全魚類）の中での確率
   const cand = listName && lists[listName] ? lists[listName] : null;
   const idx = cand || Array.from(fs.keys());
-  // 水族館を選んだときは、展示種の写真から作った特徴を混ぜたもの（プロトタイプ）で比べる
+  // 展示種は、写真から作った特徴を混ぜたもの（プロトタイプ）で比べる。
+  // 指定なしのときは、リスト外の魚が取られすぎないよう展示種のスコアからハンデを引く
   let sim = fs;
-  if (cand && protoQ) {
+  const proto = cand ? protoList : protoAll;
+  if (proto) {
     sim = fs.slice();
-    const ps = dots(protoQ, protoScale, v);
-    m.proto_rows.forEach((row, j) => { sim[row] = ps[j]; });
+    const ps = dots(proto.q, proto.scale, v), delta = cand ? 0 : m.proto.delta;
+    m.proto_rows.forEach((row, j) => { sim[row] = ps[j] - delta; });
   }
   let cm = -Infinity;
   for (const i of idx) cm = Math.max(cm, sim[i]);

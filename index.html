@@ -644,9 +644,11 @@ function renderPrep(state, info = {}) {
   if (state === "ready") return;
   if (state === "ask") {
     box.replaceChildren(
-      el("h2", { text: "はじめに AI を準備します" }),
-      el("p", { text: `判定に使う AI のデータ（約${MB(info.total)}MB）を一度だけダウンロードします。Wi-Fi でのご利用をおすすめします。2回目からはすぐ使え、電波がなくても判定できます。` }),
-      el("button", { class: "btn btn-primary", text: "ダウンロードして準備する", onclick: () => startEngine(true) }));
+      el("h2", { text: info.update ? "AI のデータを更新します" : "はじめに AI を準備します" }),
+      el("p", { text: info.update
+        ? `新しいデータ（約${MB(info.total)}MB）があります。Wi-Fi でのご利用をおすすめします。`
+        : `判定に使う AI のデータ（約${MB(info.total)}MB）を一度だけダウンロードします。Wi-Fi でのご利用をおすすめします。2回目からはすぐ使え、電波がなくても判定できます。` }),
+      el("button", { class: "btn btn-primary", text: info.update ? "更新する" : "ダウンロードして準備する", onclick: () => startEngine(true, info.total) }));
   } else if (state === "download") {
     const pct = info.total ? info.loaded / info.total * 100 : 0;
     box.replaceChildren(el("h2", { text: "AI をダウンロード中…" }),
@@ -663,9 +665,9 @@ function renderPrep(state, info = {}) {
   }
 }
 
-function startEngine(allowDownload) {
+function startEngine(allowDownload, total) {
   setButtons(false);
-  renderPrep(allowDownload ? "download" : "init", { loaded: 0, total: META.download_bytes });
+  renderPrep(allowDownload ? "download" : "init", { loaded: 0, total: total || META.download_bytes });
   engine.postMessage({ type: "load", allowDownload });
   if (allowDownload) navigator.storage?.persist?.().catch(() => {});
 }
@@ -676,7 +678,12 @@ async function boot() {
   loadAquariums();
   engine = new Worker("engine-worker.js");
   engine.onmessage = ({ data }) => {
-    if (data.type === "status") data.cached ? startEngine(false) : (setButtons(false), renderPrep("ask", data));
+    if (data.type === "status") {
+      // 小さな更新（20MB未満）は確認せずに取得する。オフラインなら今あるデータのまま使えないので確認を出す
+      if (data.cached) startEngine(false);
+      else if (data.update && data.total < 20e6 && navigator.onLine) startEngine(true, data.total);
+      else { setButtons(false); renderPrep("ask", data); }
+    }
     else if (data.type === "progress") renderPrep("download", data);
     else if (data.type === "phase") renderPrep("init");
     else if (data.type === "ready") { engineReady = true; setButtons(true); renderPrep("ready"); console.log("engine ready", data); }

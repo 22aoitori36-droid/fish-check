@@ -4,8 +4,8 @@ importScripts(ORT_URL + "ort.min.js");
 ort.env.wasm.wasmPaths = ORT_URL;
 ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
 
-const BIG_CACHE_PREFIX = "fishid-big-";
-let meta, session, fishQ, fishScale, negQ, negScale, lists;
+const BIG_CACHE = "fishid-big";
+let meta, session, fishQ, fishScale, negQ, negScale, protoQ, protoScale, lists;
 
 const post = (msg, transfer) => self.postMessage(msg, transfer || []);
 
@@ -13,35 +13,39 @@ async function getMeta() {
   if (!meta) meta = await (await fetch("data/meta.json", { cache: "no-cache" })).json();
   return meta;
 }
-function bigFiles(m) {
-  return [...m.model_parts, "data/fish.i8", "data/fish.scale", "data/neg.i8", "data/neg.scale", ...(m.photos || [])];
-}
+// 初回にまとめて取得するファイル。URL に内容のハッシュを付け、変わったファイルだけ取り直す
+const versioned = (m, path) => `${path}?v=${m.files[path].h}`;
+const bigPaths = (m) => Object.keys(m.files);
+
 async function bigCache() {
-  const m = await getMeta();
-  const name = BIG_CACHE_PREFIX + m.version;
-  // 古い版のキャッシュは消す
-  for (const k of await caches.keys()) if (k.startsWith(BIG_CACHE_PREFIX) && k !== name) await caches.delete(k);
-  return caches.open(name);
+  // 以前の版（キャッシュ名に版番号を付けていた頃）のものは消す
+  for (const k of await caches.keys()) if (k.startsWith("fishid-big-")) await caches.delete(k);
+  return caches.open(BIG_CACHE);
 }
 
 async function status() {
   const m = await getMeta(), cache = await bigCache();
-  const hits = await Promise.all(bigFiles(m).map(u => cache.match(u)));
-  return { cached: hits.every(Boolean), total: m.download_bytes };
+  const paths = bigPaths(m);
+  const hits = await Promise.all(paths.map(p => cache.match(versioned(m, p))));
+  const missing = paths.filter((_, i) => !hits[i]);
+  const missingBytes = missing.reduce((a, p) => a + m.files[p].n, 0);
+  return { cached: !missing.length, total: missingBytes, update: missing.length < paths.length };
 }
 
 // キャッシュ優先で取得。なければダウンロードして進捗を送り、キャッシュに入れる
-async function fetchAll(urls, allowDownload) {
+async function fetchAll(m, allowDownload) {
   const cache = await bigCache();
+  const paths = bigPaths(m), urls = paths.map(p => versioned(m, p));
   const cached = await Promise.all(urls.map(u => cache.match(u)));
-  const missing = urls.filter((_, i) => !cached[i]);
+  const missing = paths.filter((_, i) => !cached[i]);
   if (missing.length && !allowDownload) throw new Error("not-cached");
-  const total = meta.download_bytes;
+  const total = missing.reduce((a, p) => a + m.files[p].n, 0);
   let loaded = 0, lastPost = 0;
   const out = {};
-  async function download(u) {
+  async function download(p) {
+    const u = versioned(m, p);
     const r = await fetch(u, { cache: "no-store" });
-    if (!r.ok) throw new Error(`${u}: HTTP ${r.status}`);
+    if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`);
     const reader = r.body.getReader(), chunks = [];
     for (;;) {
       const { done, value } = await reader.read();
@@ -51,22 +55,25 @@ async function fetchAll(urls, allowDownload) {
     }
     const blob = new Blob(chunks);
     await cache.put(u, new Response(blob, { headers: { "Content-Type": r.headers.get("Content-Type") || "" } }));
-    if (!u.startsWith("photos/")) out[u] = await blob.arrayBuffer();
+    if (!p.startsWith("photos/")) out[p] = await blob.arrayBuffer();
   }
   // 大きいファイルは1つずつ、写真は6本並列
-  const photos = missing.filter(u => u.startsWith("photos/")), rest = missing.filter(u => !u.startsWith("photos/"));
-  for (const u of rest) await download(u);
+  const photos = missing.filter(p => p.startsWith("photos/")), rest = missing.filter(p => !p.startsWith("photos/"));
+  for (const p of rest) await download(p);
   for (let i = 0; i < photos.length; i += 6) await Promise.all(photos.slice(i, i + 6).map(download));
-  post({ type: "progress", loaded: total, total });
-  for (let i = 0; i < urls.length; i++)
-    if (cached[i] && !urls[i].startsWith("photos/")) out[urls[i]] = await cached[i].arrayBuffer();
+  if (missing.length) post({ type: "progress", loaded: total, total });
+  for (let i = 0; i < paths.length; i++)
+    if (cached[i] && !paths[i].startsWith("photos/")) out[paths[i]] = await cached[i].arrayBuffer();
+  // 使わなくなった古い版を消す
+  const keep = new Set(urls.map(u => new URL(u, self.location.href).href));
+  for (const req of await cache.keys()) if (!keep.has(req.url)) await cache.delete(req);
   return out;
 }
 
 async function load(allowDownload) {
   const t0 = performance.now();
   const m = await getMeta();
-  const files = await fetchAll(bigFiles(m), allowDownload);
+  const files = await fetchAll(m, allowDownload);
   post({ type: "phase", phase: "init" });
   const model = new Uint8Array(m.model_bytes);
   let off = 0;
@@ -74,6 +81,9 @@ async function load(allowDownload) {
   session = await ort.InferenceSession.create(model, { executionProviders: ["wasm"], graphOptimizationLevel: "all" });
   fishQ = new Int8Array(files["data/fish.i8"]); fishScale = new Float32Array(files["data/fish.scale"]);
   negQ = new Int8Array(files["data/neg.i8"]); negScale = new Float32Array(files["data/neg.scale"]);
+  if (files["data/proto.i8"]) {
+    protoQ = new Int8Array(files["data/proto.i8"]); protoScale = new Float32Array(files["data/proto.scale"]);
+  }
   lists = await (await fetch("data/lists.json")).json();
   post({ type: "ready", ms: Math.round(performance.now() - t0), threads: ort.env.wasm.numThreads });
 }
@@ -122,11 +132,18 @@ async function identify(pixelsList, listName, k) {
   // 候補（水族館リスト or 全魚類）の中での確率
   const cand = listName && lists[listName] ? lists[listName] : null;
   const idx = cand || Array.from(fs.keys());
+  // 水族館を選んだときは、展示種の写真から作った特徴を混ぜたもの（プロトタイプ）で比べる
+  let sim = fs;
+  if (cand && protoQ) {
+    sim = fs.slice();
+    const ps = dots(protoQ, protoScale, v);
+    m.proto_rows.forEach((row, j) => { sim[row] = ps[j]; });
+  }
   let cm = -Infinity;
-  for (const i of idx) cm = Math.max(cm, fs[i]);
+  for (const i of idx) cm = Math.max(cm, sim[i]);
   const probs = new Float32Array(idx.length);
   let z = 0;
-  idx.forEach((i, j) => { probs[j] = Math.exp(L * (fs[i] - cm)); z += probs[j]; });
+  idx.forEach((i, j) => { probs[j] = Math.exp(L * (sim[i] - cm)); z += probs[j]; });
   const order = Array.from(probs.keys()).sort((a, b) => probs[b] - probs[a]).slice(0, k);
   return {
     fish_score: pf / (pf + pn),

@@ -3,5 +3,4 @@
     <stop offset="0" stop-color="#0b4f6c"/><stop offset="1" stop-color="#2bb3c0"/></linearGradient></defs>
   <rect width="512" height="512" rx="112" fill="url(#g)"/>
   <path d="M96 256c48-76 128-112 208-104 40 4 76 28 100 56l52-40v176l-52-40c-24 28-60 52-100 56-80 8-160-28-208-104z" fill="#fff"/>
-  <circle cx="300" cy="236" r="16" fill="#0b4f6c"/>
 </svg>

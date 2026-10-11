@@ -164,6 +164,23 @@ main { flex: 1; padding: 16px 16px 96px; }
 .hist .nm { font-weight: 700; font-size: .92rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hist .meta { font-size: .72rem; color: var(--muted); }
 .empty { text-align: center; color: var(--muted); padding: 48px 12px; }
+/* 判定ちがいの指摘 */
+.fb { margin-top: 16px; }
+.fb summary { cursor: pointer; font-weight: 700; color: var(--brand); list-style: none; text-align: center; padding: 4px 0; }
+.fb summary::-webkit-details-marker { display: none; }
+.fb .fb-row { display: flex; gap: 12px; align-items: center; margin: 14px 0 10px; }
+.fb .fb-row img { width: 72px; height: 72px; object-fit: cover; border-radius: 12px; flex-shrink: 0; }
+.fb .fb-row p { margin: 0; font-size: .85rem; color: var(--muted); line-height: 1.5; }
+.fb label { display: block; font-size: .85rem; font-weight: 700; margin: 12px 0 6px; }
+.fb label small { font-weight: 400; color: var(--muted); }
+.fb input[type=text], .fb textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; color: var(--text);
+  background: var(--surface-2); border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.fb textarea { min-height: 64px; resize: vertical; }
+.fb .conf { display: flex; flex-wrap: wrap; gap: 6px; }
+.fb .conf button { border: 1.5px solid var(--line); background: var(--surface); border-radius: 99px; padding: 6px 12px; font-size: .85rem; }
+.fb .conf button.on { border-color: var(--brand); background: var(--brand); color: #fff; }
+.fb .note { font-size: .75rem; color: var(--muted); line-height: 1.6; margin: 12px 0; }
+.fb .done { text-align: center; font-weight: 700; color: var(--ok); margin: 8px 0 0; }
 .linkish { background: none; border: 0; color: var(--muted); text-decoration: underline; font-size: .85rem;
            display: block; margin: 18px auto 0; }
 
@@ -362,6 +379,9 @@ main { flex: 1; padding: 16px 16px 96px; }
 const $ = (s) => document.querySelector(s);
 const HIST_KEY = "fishid.history.v1";
 const AQ_KEY = "fishid.aquarium";
+// 判定ちがいの指摘の送り先（Google Apps Script のウェブアプリ。feedback/SETUP.md）。空なら指摘欄を出さない
+const FEEDBACK_URL = "";
+const FB_QUEUE_KEY = "fishid.feedbackQueue", FB_SENT_KEY = "fishid.feedbackSent";
 let aquariums = [], currentAq = "", lastScreen = "home";
 
 // ---------- 小さなDOMヘルパー（データは textContent で入れる） ----------
@@ -883,12 +903,81 @@ function renderResult(item) {
 
   parts.push(detail);
   parts.push(el("div", { class: "section-title", text: "候補一覧（タップで切り替え）" }), candList);
+  if (FEEDBACK_URL) parts.push(feedbackCard(item));
   parts.push(el("p", { class: "compare-note", text: `判定範囲: ${aqLabel(item.aq)} ・ ${new Date(item.id).toLocaleString("ja-JP")}` }));
   parts.push(el("button", { class: "btn btn-primary", style: "margin-top:16px", text: "別の写真を判定する",
     onclick: () => show("home") }));
   root.replaceChildren(...parts);
   select(0);
 }
+
+// ---------- 判定ちがいの指摘（匿名。届いた内容はあとで審議する） ----------
+function nameOptions() {
+  if (nameOptions.list) return nameOptions.list;
+  const names = new Set(FISH.filter(f => f.j).map(f => f.j));
+  for (const v of Object.values(store.get(JA_KEY, {}))) if (v) names.add(v);
+  return (nameOptions.list = [...names].sort((a, b) => a.localeCompare(b, "ja")));
+}
+function feedbackCard(item) {
+  const sent = store.get(FB_SENT_KEY, []).includes(item.id);
+  const box = el("details", { class: "card fb" }, el("summary", { text: sent ? "この判定は指摘済みです" : "判定がちがう？ 正しい名前を教える" }));
+  if (sent) return box;
+  const listId = "fbNames";
+  if (!$("#" + listId)) document.body.append(el("datalist", { id: listId }, nameOptions().map(n => el("option", { value: n }))));
+  const answer = el("input", { type: "text", list: listId, maxlength: "60", placeholder: "例: ドチザメ、○○の仲間" });
+  const comment = el("textarea", { maxlength: "300", placeholder: "例: 名札にこう書いてあった、など（なくてもOK）" });
+  let conf = "";
+  const confs = ["名札・解説で確認した", "たぶん", "自信がない"];
+  const confRow = el("div", { class: "conf" }, confs.map(c => el("button", { type: "button", text: c, onclick: (e) => {
+    conf = c; confRow.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === e.currentTarget)); } })));
+  const send = el("button", { class: "btn btn-primary", text: "匿名で送る", onclick: async () => {
+    if (!answer.value.trim()) { toast("正しい名前を入れてください"); answer.focus(); return; }
+    send.disabled = true; send.textContent = "送信中…";
+    const report = {
+      id: `${item.id}-${Math.random().toString(36).slice(2, 8)}`, answer: answer.value.trim(), confidence: conf,
+      comment: comment.value.trim(), aquarium: aqLabel(item.aq), version: META.version, image: item.thumb,
+      ai: item.result.species.map(s => ({ ja: s.ja, sci: s.scientific, score: Number(s.score.toFixed(3)) })),
+    };
+    const ok = await sendFeedback(report);
+    if (!ok) enqueueFeedback(report);
+    store.set(FB_SENT_KEY, [item.id, ...store.get(FB_SENT_KEY, [])].slice(0, 100));
+    box.replaceChildren(el("summary", { text: "この判定は指摘済みです" }),
+      el("p", { class: "done", text: ok ? "送信しました。ありがとうございます！" : "電波がないので、つながったときに自動で送ります" }));
+    box.open = true;
+  } });
+  box.append(
+    el("div", { class: "fb-row" }, el("img", { src: item.thumb, alt: "" }),
+      el("p", { text: "この写真と、あなたが思う正しい名前を送ります。届いた指摘は確認してから、精度の改善に使います。" })),
+    el("label", { text: "正しい魚の名前" }), answer,
+    el("label", { text: "どのくらい確か？" }), confRow,
+    el("label", {}, "ひとこと ", el("small", { text: "（任意）" })), comment,
+    el("p", { class: "note", text: "名前やメールアドレスは送られません（匿名）。送るのは、この写真・入力した内容・AIの答え・水族館名だけです。人の顔などが写っている写真は送らないでください。" }),
+    send);
+  return box;
+}
+async function sendFeedback(report) {
+  if (!navigator.onLine) return false;
+  try {
+    // text/plain で送ると、事前確認（CORS プリフライト）なしで Apps Script に届く
+    const res = await fetch(FEEDBACK_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(report) });
+    const r = await res.json();
+    if (!r.ok) console.warn("feedback rejected", r.error);
+    return true;  // 受け付けられなかった内容（形式エラーなど）は再送しても同じなので、送れたものとして扱う
+  } catch { return false; }
+}
+function enqueueFeedback(report) {
+  const q = store.get(FB_QUEUE_KEY, []); q.push(report);
+  while (q.length && !store.set(FB_QUEUE_KEY, q.slice(-20))) q.shift();
+}
+async function flushFeedback() {
+  if (!FEEDBACK_URL) return;
+  const q = store.get(FB_QUEUE_KEY, []);
+  if (!q.length || !navigator.onLine) return;
+  const left = [];
+  for (const r of q) if (!(await sendFeedback(r))) left.push(r);
+  store.set(FB_QUEUE_KEY, left);
+}
+window.addEventListener("online", flushFeedback);
 
 // ---------- 履歴 ----------
 function saveHistory(item) {
@@ -919,7 +1008,7 @@ function renderHistory() {
   );
 }
 
-boot().catch(e => renderPrep("error", { message: e.message }));
+boot().then(flushFeedback).catch(e => renderPrep("error", { message: e.message }));
 </script>
 </body>
 </html>

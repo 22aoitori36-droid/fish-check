@@ -97,7 +97,7 @@ main { flex: 1; padding: 16px 16px 96px; }
 .loading-text small { display: block; color: var(--muted); font-weight: 400; margin-top: 4px; }
 
 /* 結果 */
-.verdict { text-align: center; padding: 20px 18px 16px; }
+.verdict { text-align: center; padding: 20px 18px 16px; scroll-margin-top: 72px; }
 .verdict .pre { color: var(--muted); font-size: .9rem; }
 .verdict .name { font-size: 2rem; font-weight: 900; line-height: 1.25; margin: 4px 0; word-break: keep-all; overflow-wrap: anywhere; }
 .verdict .post { font-size: .95rem; }
@@ -105,6 +105,7 @@ main { flex: 1; padding: 16px 16px 96px; }
 .pill.hi { background: var(--ok-bg); color: var(--ok); }
 .pill.mid { background: var(--mid-bg); color: var(--mid); }
 .pill.lo { background: var(--lo-bg); color: var(--lo); }
+.pill.alt { background: var(--surface-2); color: var(--muted); }
 .meter { height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; margin: 12px auto 0; max-width: 260px; }
 .meter > div { height: 100%; background: linear-gradient(90deg, var(--brand), var(--brand-light)); border-radius: 99px; }
 
@@ -128,7 +129,10 @@ main { flex: 1; padding: 16px 16px 96px; }
 .mame ul { margin: 0; padding-left: 1.2em; line-height: 1.7; font-size: .92rem; }
 .mame-wiki { margin: 0; font-size: .9rem; line-height: 1.7; }
 .mame-wiki a { color: var(--muted); font-size: .8rem; }
-.cand-name { font-weight: 900; font-size: 1.3rem; text-align: center; margin-top: 14px; }
+.verdict.alt { box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 35%, transparent); }
+.verdict .alt-label { color: var(--brand); font-weight: 700; }
+.back-top { margin-top: 14px; font-size: .85rem; color: var(--brand); font-weight: 700; background: none;
+            border: 1.5px solid var(--line); border-radius: 99px; padding: 7px 14px; }
 .more { margin: 14px 0; font-size: .9rem; }
 .more summary { cursor: pointer; color: var(--muted); }
 .facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; font-size: .9rem; margin: 14px 0; }
@@ -791,15 +795,25 @@ function renderResult(item) {
     el("b", { text: "魚が写っていないかもしれません。" }),
     "クラゲやペンギンなど魚以外の生きものは判定できません。"));
 
-  parts.push(el("div", { class: "card verdict" },
-    el("div", { class: "pre", text: conf.pre }),
-    el("div", { class: "name", text: displayName(top) }),
-    tagRow(top),
-    el("div", { class: "post", text: conf.post }),
-    el("span", { class: "pill " + conf.cls, text: `${conf.pill}（${(top.score * 100).toFixed(0)}%）` }),
-    el("div", { class: "meter" }, el("div", { style: `width:${Math.max(top.score * 100, 2)}%` })),
-    triviaBox(top),
-  ));
+  // 上の大きなカード。候補をタップすると、その魚の名前・豆知識に切り替わる
+  const verdict = el("div", { class: "card verdict" });
+  parts.push(verdict);
+  function renderVerdict(i) {
+    const s = sp[i];
+    verdict.classList.toggle("alt", i > 0);
+    verdict.replaceChildren(
+      i === 0 ? el("div", { class: "pre", text: conf.pre })
+              : el("div", { class: "pre alt-label", text: `候補 ${i + 1} 位を表示中` }),
+      el("div", { class: "name", text: displayName(s) }),
+      tagRow(s),
+      i === 0 ? [el("div", { class: "post", text: conf.post }),
+                 el("span", { class: "pill " + conf.cls, text: `${conf.pill}（${(s.score * 100).toFixed(0)}%）` })]
+              : el("span", { class: "pill alt", text: `可能性 ${s.score < .01 ? "1%未満" : (s.score * 100).toFixed(0) + "%"}` }),
+      el("div", { class: "meter" }, el("div", { style: `width:${Math.max(s.score * 100, 2)}%` })),
+      triviaBox(s),
+      i > 0 ? el("button", { class: "back-top", text: `1位の「${displayName(top)}」に戻す`, onclick: () => select(0) }) : null,
+    );
+  }
 
   // 見比べ & 詳細（候補をタップで切り替え）
   const detail = el("div", { class: "card" });
@@ -818,7 +832,6 @@ function renderResult(item) {
           el("figcaption", { text: displayName(s) + " の写真" },
             s.credit ? el("span", { class: "credit", text: s.credit }) : null))),
       el("p", { class: "compare-note", text: "写真をタップすると大きく表示します" }),
-      i > 0 ? [el("div", { class: "cand-name", text: displayName(s) }), tagRow(s), triviaBox(s)] : null,
       el("details", { class: "more" },
         el("summary", { text: "くわしい情報（学名・科）" }),
         el("dl", { class: "facts" },
@@ -830,15 +843,16 @@ function renderResult(item) {
         el("a", { href: l.url, target: "_blank", rel: "noopener", text: l.label + " ↗" }))),
     );
     candList.querySelectorAll(".cand").forEach((c, j) => c.classList.toggle("on", j === i));
+    renderVerdict(i);
   }
-  sp.forEach((s, i) => candList.append(el("button", { class: "cand", onclick: () => { select(i); detail.scrollIntoView({ behavior: "smooth", block: "start" }); } },
+  sp.forEach((s, i) => candList.append(el("button", { class: "cand", onclick: () => { select(i); verdict.scrollIntoView({ behavior: "smooth", block: "start" }); } },
     el("div", { class: "th" }, s.photo ? el("img", { src: s.photo, alt: "", loading: "lazy" }) : "🐟"),
     el("div", { class: "tx" }, el("div", { class: "nm", text: `${i + 1}. ${displayName(s)}` }),
       el("div", { class: "sc", text: s.scientific })),
     el("div", { class: "pc", text: (s.score * 100).toFixed(0) + "%" }))));
 
   parts.push(detail);
-  parts.push(el("div", { class: "section-title", text: "候補一覧（タップで見比べ）" }), candList);
+  parts.push(el("div", { class: "section-title", text: "候補一覧（タップで切り替え）" }), candList);
   parts.push(el("p", { class: "compare-note", text: `判定範囲: ${aqLabel(item.aq)} ・ ${new Date(item.id).toLocaleString("ja-JP")}` }));
   parts.push(el("button", { class: "btn btn-primary", style: "margin-top:16px", text: "別の写真を判定する",
     onclick: () => show("home") }));

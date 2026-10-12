@@ -165,10 +165,34 @@ async function identify(pixelsList, listName, k) {
   const order = Array.from(probs.keys()).sort((a, b) => probs[b] - probs[a]).slice(0, k);
   return {
     fish_score: pf / (pf + pn),
+    offlist: cand ? offList(fs, v, cand) : null,
     species: order.map(j => ({ row: idx[j], score: probs[j] / z })),
     all: { idx, probs: Array.from(probs, p => p / z) },
     ms: { infer: Math.round(tInfer), total: Math.round(performance.now() - t0) },
   };
+}
+
+// 水族館を選んでいても、全種（指定なしと同じ計算）で比べて、一覧にない種のほうが
+// はっきり似ていたら知らせる。差 0.03 は tools/eval_offlist_hint.py で決めた
+// （一覧外の写真で 65% 出て、一覧内で正解できていたのに出るのは 1%）
+const OFFLIST_MARGIN = 0.03;
+function offList(fs, v, cand) {
+  const sa = fs.slice();
+  if (protoAll) {
+    const ps = dots(protoAll.q, protoAll.scale, v);
+    meta.proto_rows.forEach((row, j) => { sa[row] = ps[j] - meta.proto.delta; });
+  }
+  const inList = new Uint8Array(sa.length);
+  let bestIn = -Infinity, bestOut = -Infinity, off = -1, mx = -Infinity;
+  for (const i of cand) { inList[i] = 1; bestIn = Math.max(bestIn, sa[i]); }
+  for (let i = 0; i < sa.length; i++) {
+    mx = Math.max(mx, sa[i]);
+    if (!inList[i] && sa[i] > bestOut) { bestOut = sa[i]; off = i; }
+  }
+  if (off < 0 || bestOut - bestIn <= OFFLIST_MARGIN) return null;
+  let z = 0;
+  for (const x of sa) z += Math.exp(meta.logit_scale * (x - mx));
+  return { row: off, score: Math.exp(meta.logit_scale * (bestOut - mx)) / z };
 }
 
 self.onmessage = async ({ data }) => {

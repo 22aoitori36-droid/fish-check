@@ -157,6 +157,12 @@ main { flex: 1; padding: 16px 16px 96px; }
 .mame ul { margin: 0; padding-left: 1.2em; line-height: 1.7; font-size: .92rem; }
 .mame-wiki { margin: 0; font-size: .9rem; line-height: 1.7; }
 .mame-wiki a { color: var(--muted); font-size: .8rem; }
+.offhint { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; margin-bottom: 16px;
+           border: 1.5px solid color-mix(in srgb, var(--brand) 45%, transparent); font: inherit; color: inherit; }
+.offhint-tx { flex: 1; font-size: .9rem; line-height: 1.5; min-width: 0; }
+.offhint-h { font-weight: 700; color: var(--brand); margin-bottom: 2px; }
+.offhint img { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; flex: none; }
+.offhint-go { color: var(--brand); font-weight: 700; font-size: .85rem; flex: none; }
 .verdict.alt { box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand) 35%, transparent); }
 .verdict .alt-label { color: var(--brand); font-weight: 700; }
 .back-top { margin-top: 14px; font-size: .85rem; color: var(--brand); font-weight: 700; background: none;
@@ -721,15 +727,17 @@ async function buildResult(r) {
   const fams = new Map();
   r.all.idx.forEach((row, j) => { const f = FISH[row].f || "?"; fams.set(f, (fams.get(f) || 0) + r.all.probs[j]); });
   const families = [...fams].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([family, score]) => ({ family, score }));
-  const rows = r.species.map(s => FISH[s.row]);
+  const picks = r.offlist ? [...r.species, { ...r.offlist, offlist: true }] : r.species;
+  const rows = picks.map(s => FISH[s.row]);
   const [ja, refs] = await Promise.all([japaneseNames(rows), references(rows)]);
-  const species = r.species.map((s, i) => {
+  const species = picks.map((s, i) => {
     const f = rows[i], ref = refs[f.s] || {}, j = ja[f.s] || "";
     const photo = ref.photo || "";
     return {
       ja: j, common: f.c, scientific: f.s, family: f.f, score: s.score, credit: ref.credit || "",
       photo, photo_large: photo.replace("/medium.", "/large."),
       group: f.g || "", links: links(f.s, j, ref, f.g), trivia: TRIVIA[f.s] || null,
+      offlist: !!s.offlist,
     };
   });
   return { fish_score: r.fish_score, species, families, ms: r.ms };
@@ -933,7 +941,9 @@ function triviaBox(s) {
 
 function renderResult(item) {
   const r = item.result, sp = r.species;
-  const top = sp[0], conf = confidence(top.score);
+  const offIdx = sp.findIndex(s => s.offlist);
+  // 一覧にない種のほうが似ているときは「ほぼ確実」とは言わない
+  const top = sp[0], conf = confidence(sp.some(s => s.offlist) ? Math.min(top.score, .59) : top.score);
   const root = $("#result");
   const parts = [];
 
@@ -950,7 +960,7 @@ function renderResult(item) {
     // replaceChildren は配列や null をそのまま文字にしてしまうので、平らにして空を除く
     verdict.replaceChildren(...[
       i === 0 ? el("div", { class: "pre", text: conf.pre })
-              : el("div", { class: "pre alt-label", text: `候補 ${i + 1} 位を表示中` }),
+              : el("div", { class: "pre alt-label", text: s.offlist ? "一覧にない候補を表示中" : `候補 ${i + 1} 位を表示中` }),
       el("div", { class: "name", text: displayName(s) }),
       tagRow(s),
       i === 0 ? [el("div", { class: "post", text: conf.post }),
@@ -962,13 +972,24 @@ function renderResult(item) {
     ].flat().filter(c => c != null));
   }
 
+  // 水族館の一覧にない種のほうが似ていたとき
+  if (offIdx > 0) {
+    const o = sp[offIdx];
+    parts.push(el("button", { class: "card offhint", onclick: () => { select(offIdx); verdict.scrollIntoView({ behavior: "smooth", block: "start" }); } },
+      el("div", { class: "offhint-tx" },
+        el("div", { class: "offhint-h", text: `${aqLabel(item.aq)}の一覧にない生き物かも？` }),
+        el("div", {}, "全種で比べると「", el("b", { text: displayName(o) }), "」がよく似ています")),
+      o.photo ? el("img", { src: o.photo, alt: "", loading: "lazy" }) : null,
+      el("span", { class: "offhint-go", text: "見る ›" })));
+  }
+
   // 見比べ & 詳細（候補をタップで切り替え）
   const detail = el("div", { class: "card" });
   const candList = el("div");
   function select(i) {
     const s = sp[i];
     detail.replaceChildren(
-      el("div", { class: "section-title", style: "margin-top:0", text: i === 0 ? "見比べてみよう" : `候補 ${i + 1} と見比べる` }),
+      el("div", { class: "section-title", style: "margin-top:0", text: i === 0 ? "見比べてみよう" : s.offlist ? "一覧にない候補と見比べる" : `候補 ${i + 1} と見比べる` }),
       el("div", { class: "compare" },
         el("figure", {}, el("button", { class: "ph", onclick: () => openLightbox(item.thumb, "あなたの写真") },
             el("img", { src: item.thumb, alt: "あなたの写真" })),
@@ -994,7 +1015,7 @@ function renderResult(item) {
   }
   sp.forEach((s, i) => candList.append(el("button", { class: "cand", onclick: () => { select(i); verdict.scrollIntoView({ behavior: "smooth", block: "start" }); } },
     el("div", { class: "th" }, s.photo ? el("img", { src: s.photo, alt: "", loading: "lazy" }) : "🐟"),
-    el("div", { class: "tx" }, el("div", { class: "nm", text: `${i + 1}. ${displayName(s)}` }),
+    el("div", { class: "tx" }, el("div", { class: "nm", text: s.offlist ? `一覧外: ${displayName(s)}` : `${i + 1}. ${displayName(s)}` }),
       el("div", { class: "sc", text: s.scientific })),
     el("div", { class: "pc", text: (s.score * 100).toFixed(0) + "%" }))));
 

@@ -5,7 +5,7 @@ ort.env.wasm.wasmPaths = ORT_URL;
 ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 1) : 1;
 
 const BIG_CACHE = "fishid-big";
-let meta, session, fishQ, fishScale, negQ, negScale, protoList, protoAll, lists;
+let meta, session, fishQ, fishScale, negQ, negScale, protoList, protoAll, lists, hasJa;
 
 const post = (msg, transfer) => self.postMessage(msg, transfer || []);
 
@@ -101,6 +101,7 @@ async function load(allowDownload) {
     { q: new Int8Array(files[`data/${n}.i8`]), scale: new Float32Array(files[`data/${n}.scale`]) };
   protoList = table("proto_list"); protoAll = table("proto_all");
   lists = await (await fetch("data/lists.json")).json();
+  hasJa = Uint8Array.from(await (await fetch("data/fish.json")).json(), f => f.j ? 1 : 0);
   post({ type: "ready", ms: Math.round(performance.now() - t0), threads: ort.env.wasm.numThreads });
 }
 
@@ -174,7 +175,8 @@ async function identify(pixelsList, listName, k) {
 
 // 水族館を選んでいても、全種（指定なしと同じ計算）で比べて、一覧にない種のほうが
 // はっきり似ていたら知らせる。差 0.03 は tools/eval_offlist_hint.py で決めた
-// （一覧外の写真で 65% 出て、一覧内で正解できていたのに出るのは 1%）
+// （一覧外の写真で 58% 出て、一覧内で正解できていたのに出るのは 1%）。
+// 学名しかない外国の種が出ないよう、和名のある種だけを候補にする（当たる割合はほぼ変わらない）
 const OFFLIST_MARGIN = 0.03;
 function offList(fs, v, cand) {
   const sa = fs.slice();
@@ -187,7 +189,7 @@ function offList(fs, v, cand) {
   for (const i of cand) { inList[i] = 1; bestIn = Math.max(bestIn, sa[i]); }
   for (let i = 0; i < sa.length; i++) {
     mx = Math.max(mx, sa[i]);
-    if (!inList[i] && sa[i] > bestOut) { bestOut = sa[i]; off = i; }
+    if (!inList[i] && hasJa[i] && sa[i] > bestOut) { bestOut = sa[i]; off = i; }
   }
   if (off < 0 || bestOut - bestIn <= OFFLIST_MARGIN) return null;
   let z = 0;

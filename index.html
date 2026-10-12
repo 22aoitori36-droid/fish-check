@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="魚判定">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap">
 <style>
@@ -272,6 +272,16 @@ main { flex: 1; padding: 16px 16px 96px; }
           <li>ホーム画面にできた「<b>魚判定</b>」のアイコンから開く</li>
         </ol>
         <button class="ios-skip" id="iosSkip">追加せずにこのまま使う</button>
+      </div>
+      <div class="card ios-note" id="androidNote" hidden>
+        <h2>ホーム画面に追加できます</h2>
+        <p>ホーム画面に追加すると、アプリのように全画面ですぐ開けます。</p>
+        <button class="btn btn-primary" id="installBtn" hidden>ホーム画面に追加する</button>
+        <ol id="installSteps">
+          <li>右上の <b>︙</b>（メニュー）をタップ</li>
+          <li>「<b>ホーム画面に追加</b>」または「<b>アプリをインストール</b>」を選ぶ</li>
+        </ol>
+        <button class="ios-skip" id="androidSkip">追加せずにこのまま使う</button>
       </div>
       <div class="section-title">どこの水族館？</div>
       <div class="chips" id="chips"></div>
@@ -764,6 +774,31 @@ function iosNote() {
   $("#iosSkip").onclick = () => { store.set("fishid.iosSkip", true); $("#iosNote").hidden = true; };
 }
 iosNote();
+
+// Android は、ブラウザが追加の準備をできたらボタン1つで追加できるようにする（できないブラウザでは手順を出す）
+let installPrompt = null;
+function androidNote() {
+  const installed = matchMedia("(display-mode: standalone)").matches;
+  if (!/Android/.test(navigator.userAgent) || installed || store.get("fishid.androidSkip", false)) return;
+  const card = $("#androidNote");
+  card.hidden = false;
+  $("#androidSkip").onclick = () => { store.set("fishid.androidSkip", true); card.hidden = true; };
+  $("#installBtn").onclick = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    installPrompt = null;
+    if (outcome === "accepted") card.hidden = true;
+  };
+}
+addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  $("#installBtn").hidden = false;
+  $("#installSteps").hidden = true;
+});
+addEventListener("appinstalled", () => { $("#androidNote").hidden = true; });
+androidNote();
 
 async function boot() {
   [META, FISH, LISTS, TRIVIA] = await Promise.all(

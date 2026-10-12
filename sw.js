@@ -1,7 +1,7 @@
 // オフライン対応。画面とデータはネット優先（更新を反映）、ネットがなければ保存分を使う。
 // 大きなモデル本体は engine-worker.js が自分でキャッシュするので、ここでは扱わない。
 const SHELL = "fishid-shell-v1";
-const PRECACHE = ["./", "index.html", "engine-worker.js", "manifest.webmanifest", "icon.svg",
+const PRECACHE = ["./", "index.html", "engine-worker.js", "manifest.webmanifest", "icon.svg", "icon-192.png", "apple-touch-icon.png",
                   "data/meta.json", "data/fish.json", "data/lists.json", "data/trivia.json"];
 const ORT = "https://cdn.jsdelivr.net/npm/onnxruntime-web@";
 

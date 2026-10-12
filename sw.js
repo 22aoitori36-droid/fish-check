@@ -14,7 +14,7 @@ self.addEventListener("fetch", (e) => {
   const req = e.request, url = new URL(req.url);
   if (req.method !== "GET") return;
   const sameOrigin = url.origin === self.location.origin;
-  const big = /\/model\/|\/photos\/|\.i8$|\.scale$/.test(url.pathname);
+  const big = /\/model\/|\/photos\/|\.i8$|\.scale$|\.gz$/.test(url.pathname);
   if (sameOrigin && big) {
     // engine-worker.js が保存したもの（モデル・埋め込み・同梱写真）を優先。
     // ?v=（版）付きは同じ版だけを返す

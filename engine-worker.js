@@ -16,6 +16,9 @@ async function getMeta() {
 // 初回にまとめて取得するファイル。URL に内容のハッシュを付け、変わったファイルだけ取り直す
 const versioned = (m, path) => `${path}?v=${m.files[path].h}`;
 const bigPaths = (m) => Object.keys(m.files);
+// 圧縮版（.gz）があればそちらを取って解凍する。転送量はモデルで約55%になる
+const canGunzip = typeof DecompressionStream === "function";
+const wireBytes = (m, p) => (canGunzip && m.files[p].z) || m.files[p].n;
 
 async function bigCache() {
   // 以前の版（キャッシュ名に版番号を付けていた頃）のものは消す
@@ -41,7 +44,7 @@ async function status() {
   const m = await getMeta(), cache = await bigCache();
   const paths = bigPaths(m);
   const missing = await missingPaths(m, cache, paths);
-  const missingBytes = missing.reduce((a, p) => a + m.files[p].n, 0);
+  const missingBytes = missing.reduce((a, p) => a + wireBytes(m, p), 0);
   return { cached: !missing.length, total: missingBytes, update: missing.length < paths.length };
 }
 
@@ -52,7 +55,7 @@ async function fetchAll(m, allowDownload) {
   const missing = await missingPaths(m, cache, paths);
   const cached = await Promise.all(urls.map(u => cache.match(u)));
   if (missing.length && !allowDownload) throw new Error("not-cached");
-  const total = missing.reduce((a, p) => a + m.files[p].n, 0);
+  const total = missing.reduce((a, p) => a + wireBytes(m, p), 0);
   let loaded = 0, lastPost = 0;
   const out = {};
   async function download(p) {
@@ -60,7 +63,8 @@ async function fetchAll(m, allowDownload) {
     // 同じファイルの古い版を先に消す（古い sw.js が版を区別せずに古い中身を返さないように）
     for (const req of await cache.keys())
       if (new URL(req.url).pathname === new URL(u, self.location.href).pathname) await cache.delete(req);
-    const r = await fetch(u, { cache: "no-store" });
+    const gz = canGunzip && m.files[p].z;
+    const r = await fetch(gz ? `${p}.gz?v=${m.files[p].h}` : u, { cache: "no-store" });
     if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`);
     const reader = r.body.getReader(), chunks = [];
     for (;;) {
@@ -69,13 +73,16 @@ async function fetchAll(m, allowDownload) {
       chunks.push(value); loaded += value.length;
       if (performance.now() - lastPost > 200) { lastPost = performance.now(); post({ type: "progress", loaded, total }); }
     }
-    const blob = new Blob(chunks);
+    let blob = new Blob(chunks);
+    if (gz) blob = await new Response(blob.stream().pipeThrough(new DecompressionStream("gzip"))).blob();
+    if (!p.startsWith("photos/") && blob.size !== m.files[p].n) throw new Error(`${p}: 大きさが合いません`);
     await cache.put(u, new Response(blob, { headers: { "Content-Type": r.headers.get("Content-Type") || "" } }));
     if (!p.startsWith("photos/")) out[p] = await blob.arrayBuffer();
   }
-  // 大きいファイルは1つずつ、写真は6本並列
+  // 大きいファイルは3本、写真は6本並列（回線の遅延が大きいスマホでは並列のほうが速い）
   const photos = missing.filter(p => p.startsWith("photos/")), rest = missing.filter(p => !p.startsWith("photos/"));
-  for (const p of rest) await download(p);
+  const queue = [...rest];
+  await Promise.all([0, 1, 2].map(async () => { while (queue.length) await download(queue.shift()); }));
   for (let i = 0; i < photos.length; i += 6) await Promise.all(photos.slice(i, i + 6).map(download));
   if (missing.length) post({ type: "progress", loaded: total, total });
   for (let i = 0; i < paths.length; i++)

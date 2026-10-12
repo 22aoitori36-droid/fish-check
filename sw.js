@@ -23,7 +23,8 @@ self.addEventListener("fetch", (e) => {
   }
   if (sameOrigin && !big) {
     // ネット優先（ブラウザの HTTP キャッシュも確かめ直して、更新をすぐ反映する）
-    e.respondWith(fetch(req.mode === "navigate" ? req : new Request(req, { cache: "no-cache" })).then(res => {
+    e.respondWith(fetch(req.mode === "navigate" ? new Request(req.url, { cache: "no-cache", credentials: "same-origin" })
+                                        : new Request(req, { cache: "no-cache" })).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(SHELL).then(c => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req, { ignoreSearch: true })));

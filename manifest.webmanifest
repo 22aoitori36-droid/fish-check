@@ -1,6 +1,6 @@
 {
-  "name": "魚判定",
-  "short_name": "魚判定",
+  "name": "海の生き物判定",
+  "short_name": "海の生き物",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

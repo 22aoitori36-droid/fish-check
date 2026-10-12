@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>魚判定</title>
+<title>海の生き物判定</title>
 <meta name="theme-color" content="#0b4f6c">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="魚判定">
+<meta name="apple-mobile-web-app-title" content="海の生き物">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -254,7 +254,7 @@ main { flex: 1; padding: 16px 16px 96px; }
 <div class="app">
   <header class="appbar">
     <img src="icon.svg" alt="">
-    <h1>魚判定</h1>
+    <h1>海の生き物判定</h1>
     <button class="back" id="backBtn" hidden>← もどる</button>
   </header>
 
@@ -269,7 +269,7 @@ main { flex: 1; padding: 16px 16px 96px; }
             <svg class="share-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-label="共有"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>
             をタップ</li>
           <li>「<b>ホーム画面に追加</b>」を選ぶ<br><small>見当たらないときは、下にスクロールするか「その他」の中にあります</small></li>
-          <li>ホーム画面にできた「<b>魚判定</b>」のアイコンから開く</li>
+          <li>ホーム画面にできた「<b>海の生き物</b>」のアイコンから開く</li>
         </ol>
         <button class="ios-skip" id="iosSkip">追加せずにこのまま使う</button>
       </div>
@@ -287,14 +287,14 @@ main { flex: 1; padding: 16px 16px 96px; }
       <div class="chips" id="chips"></div>
       <div class="section-title">何枚で判定する？</div>
       <div class="chips" id="countChips"></div>
-      <p class="count-hint">同じ魚を角度を変えて2〜3枚撮ると、精度が上がります（1枚あたり数秒〜10秒）</p>
+      <p class="count-hint">同じ生き物を角度を変えて2〜3枚撮ると、精度が上がります（1枚あたり数秒〜10秒）</p>
 
       <div class="card prep" id="prep" hidden></div>
 
       <div class="card shoot" id="drop">
         <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="color:var(--brand)"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="4"/></svg>
-        <p class="lead">魚の写真で、名前を調べよう</p>
-        <p class="sub">撮った写真から AI が種類を推定します</p>
+        <p class="lead">水族館の生き物の写真で、名前を調べよう</p>
+        <p class="sub">魚・クラゲ・ペンギン・アザラシやイルカ・カメ・サンショウウオの種類を AI が推定します</p>
         <button class="btn btn-primary" id="cameraBtn" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="4"/></svg>
           写真を撮る
@@ -310,7 +310,7 @@ main { flex: 1; padding: 16px 16px 96px; }
 
       <div class="card">
         <div class="steps">
-          <div class="step"><div class="num">1</div><p>魚の写真を<br>撮る・選ぶ</p></div>
+          <div class="step"><div class="num">1</div><p>生き物の写真を<br>撮る・選ぶ</p></div>
           <div class="step"><div class="num">2</div><p>AI が<br>種類を判定</p></div>
           <div class="step"><div class="num">3</div><p>図鑑の写真と<br>見比べる</p></div>
         </div>
@@ -319,10 +319,10 @@ main { flex: 1; padding: 16px 16px 96px; }
       <div class="card">
         <div class="section-title" style="margin-top:0">上手に撮るコツ</div>
         <ul class="tips">
-          <li>魚を画面いっぱいに、横向きで</li>
+          <li>生き物を画面いっぱいに、横向きで</li>
           <li>ガラスにレンズを近づけて映り込みを防ぐ</li>
-          <li>フラッシュは OFF（魚にもやさしい）</li>
-          <li>水族館を選ぶと、その館の魚にしぼって判定</li>
+          <li>フラッシュは OFF（生き物にもやさしい）</li>
+          <li>水族館を選ぶと、その館の生き物にしぼって判定</li>
         </ul>
       </div>
     </section>
@@ -469,7 +469,7 @@ function aqLabel(id) {
 }
 function renderChips() {
   $("#chips").replaceChildren(...aquariums.map(a => el("button", {
-    class: "chip" + (a.id === currentAq ? " on" : ""), text: a.id ? a.label : "指定なし（すべての魚）",
+    class: "chip" + (a.id === currentAq ? " on" : ""), text: a.id ? a.label : "指定なし（すべて）",
     onclick: () => { currentAq = a.id; store.set(AQ_KEY, a.id); renderChips(); },
   })));
 }
@@ -538,7 +538,7 @@ let cropSrc = null, box = null;
 const MIN_BOX = 40;
 function openCrop(canvas) {
   cropSrc = canvas;
-  $("#cropTitle").textContent = shotCount > 1 ? `魚の部分を囲んでください（${shots.length + 1} / ${shotCount}枚目）` : "魚の部分を囲んでください";
+  $("#cropTitle").textContent = shotCount > 1 ? `生き物の部分を囲んでください（${shots.length + 1} / ${shotCount}枚目）` : "生き物の部分を囲んでください";
   const img = $("#cropImg");
   img.onload = () => {
     const W = img.clientWidth, H = img.clientHeight;
@@ -600,7 +600,7 @@ $("#cropCancel").addEventListener("click", () => { queue = []; shots.length ? sh
 function showShots() {
   const left = shotCount - shots.length;
   $("#shotsTitle").textContent = `${shots.length} / ${shotCount}枚`;
-  $("#shotsSub").textContent = `あと${left}枚。同じ魚を、角度や位置を変えて撮ってください`;
+  $("#shotsSub").textContent = `あと${left}枚。同じ生き物を、角度や位置を変えて撮ってください`;
   $("#shotGrid").replaceChildren(...Array.from({ length: shotCount }, (_, i) => shots[i]
     ? el("div", { class: "s done" }, el("img", { src: shots[i].thumb, alt: `${i + 1}枚目` }))
     : el("div", { class: "s", text: `${i + 1}枚目` })));
@@ -668,7 +668,7 @@ async function buildResult(r) {
     return {
       ja: j, common: f.c, scientific: f.s, family: f.f, score: s.score, credit: ref.credit || "",
       photo, photo_large: photo.replace("/medium.", "/large."),
-      links: links(f.s, j, ref), trivia: TRIVIA[f.s] || null,
+      group: f.g || "", links: links(f.s, j, ref, f.g), trivia: TRIVIA[f.s] || null,
     };
   });
   return { fish_score: r.fish_score, species, families, ms: r.ms };
@@ -710,11 +710,11 @@ async function references(rows) {
   for (const f of rows) out[f.s] = out[f.s] || cache[f.s] || (f.t ? { id: f.t } : {});
   return out;
 }
-function links(sci, ja, ref) {
+function links(sci, ja, ref, group) {
   const out = [];
   if (ref.id) out.push({ label: "写真をもっと見る", url: `https://www.inaturalist.org/taxa/${ref.id}/browse_photos` });
   out.push({ label: "Wikipedia", url: "https://ja.wikipedia.org/w/index.php?search=" + encodeURIComponent(ja || sci) });
-  out.push({ label: "FishBase", url: "https://www.fishbase.se/summary/" + sci.replace(" ", "-") });
+  if (!group) out.push({ label: "FishBase", url: "https://www.fishbase.se/summary/" + sci.replace(" ", "-") });
   return out;
 }
 
@@ -829,8 +829,8 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catc
 // ---------- 結果 ----------
 const displayName = (s) => s.ja || s.common || s.scientific;
 function confidence(p) {
-  if (p >= .6) return { cls: "hi", pill: "ほぼ確実", pre: "この魚は", post: "です" };
-  if (p >= .25) return { cls: "mid", pill: "たぶん", pre: "この魚は たぶん", post: "です" };
+  if (p >= .6) return { cls: "hi", pill: "ほぼ確実", pre: "これは", post: "です" };
+  if (p >= .25) return { cls: "mid", pill: "たぶん", pre: "これは たぶん", post: "です" };
   return { cls: "lo", pill: "自信なし", pre: "もしかすると", post: "かもしれません。下の候補とも見比べてください" };
 }
 
@@ -877,8 +877,8 @@ function renderResult(item) {
   const parts = [];
 
   if (r.fish_score < .5) parts.push(el("div", { class: "warn" },
-    el("b", { text: "魚が写っていないかもしれません。" }),
-    "クラゲやペンギンなど魚以外の生きものは判定できません。"));
+    el("b", { text: "判定できる生き物が写っていないかもしれません。" }),
+    "判定できるのは、魚・クラゲ・ペンギン・アザラシやイルカなど・カメ・サンショウウオの仲間です（カニ・エビ・タコ・ヒトデなどはまだ判定できません）。"));
 
   // 上の大きなカード。候補をタップすると、その魚の名前・豆知識に切り替わる
   const verdict = el("div", { class: "card verdict" });
@@ -886,7 +886,8 @@ function renderResult(item) {
   function renderVerdict(i) {
     const s = sp[i];
     verdict.classList.toggle("alt", i > 0);
-    verdict.replaceChildren(
+    // replaceChildren は配列や null をそのまま文字にしてしまうので、平らにして空を除く
+    verdict.replaceChildren(...[
       i === 0 ? el("div", { class: "pre", text: conf.pre })
               : el("div", { class: "pre alt-label", text: `候補 ${i + 1} 位を表示中` }),
       el("div", { class: "name", text: displayName(s) }),
@@ -897,7 +898,7 @@ function renderResult(item) {
       el("div", { class: "meter" }, el("div", { style: `width:${Math.max(s.score * 100, 2)}%` })),
       triviaBox(s),
       i > 0 ? el("button", { class: "back-top", text: `1位の「${displayName(top)}」に戻す`, onclick: () => select(0) }) : null,
-    );
+    ].flat().filter(c => c != null));
   }
 
   // 見比べ & 詳細（候補をタップで切り替え）
@@ -983,7 +984,7 @@ function feedbackCard(item) {
   box.append(
     el("div", { class: "fb-row" }, el("img", { src: item.thumb, alt: "" }),
       el("p", { text: "この写真と、あなたが思う正しい名前を送ります。届いた指摘は確認してから、精度の改善に使います。" })),
-    el("label", { text: "正しい魚の名前" }), answer,
+    el("label", { text: "正しい名前" }), answer,
     el("label", { text: "どのくらい確か？" }), confRow,
     el("label", {}, "ひとこと ", el("small", { text: "（任意）" })), comment,
     el("p", { class: "note", text: "名前やメールアドレスは送られません（匿名）。送るのは、この写真・入力した内容・AIの答え・水族館名だけです。人の顔などが写っている写真は送らないでください。" }),
